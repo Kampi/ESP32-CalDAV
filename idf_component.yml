@@ -1,0 +1,22 @@
+version: "0.0.1"
+description: "ESP32 component for a CalDAV Client"
+url: https://github.com/Kampi/ESP32-CalDAV
+repository: https://github.com/Kampi/ESP32-CalDAV
+license: "GPL-3.0"
+tags:
+  - webdav
+  - caldav
+  - client
+  - calendar
+  - esp32
+targets:
+  - esp32
+  - esp32s2
+  - esp32c3
+  - esp32c2
+  - esp32s3
+maintainers:
+  - "Daniel Kampert <DanielKampert@kampis-elektroecke.de>"
+dependencies:
+  idf:
+    version: ">=5.1"
