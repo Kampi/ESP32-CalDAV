@@ -1,3 +1,6 @@
+#!/bin/bash
+# Script to check C/C++ code formatting using astyle
+
 astyle --version
           
 # Find all C/C++ files
