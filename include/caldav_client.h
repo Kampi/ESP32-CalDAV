@@ -104,8 +104,8 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client);
  *  @return             CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
-                                      CalDAV_Calendar_t **p_Calendars,
-                                      size_t *p_Length);
+                                     CalDAV_Calendar_t **p_Calendars,
+                                     size_t *p_Length);
 
 /** @brief              Lists all events from the configured calendar.
  *  @param p_Client     CalDAV client handle (must not be NULL, calendar_path must be set in config)
@@ -116,10 +116,10 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
  *  @return             CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
-                                            CalDAV_Calendar_Event_t **p_Events,
-                                            size_t *p_Length,
-                                            const char *p_StartTime,
-                                            const char *p_EndTime);
+                                           CalDAV_Calendar_Event_t **p_Events,
+                                           size_t *p_Length,
+                                           const char *p_StartTime,
+                                           const char *p_EndTime);
 
 /** @brief          Frees memory allocated for event data.
  *  @param p_Events Event array to free
@@ -141,8 +141,8 @@ void CalDAV_Calendars_Free(CalDAV_Calendar_t *p_Calendars, size_t Length);
  *  @note               This function is not yet fully implemented
  */
 CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
-                                          const char *p_EventPath,
-                                          CalDAV_Calendar_Event_t *p_Event);
+                                         const char *p_EventPath,
+                                         CalDAV_Calendar_Event_t *p_Event);
 
 #ifdef __cplusplus
 }
