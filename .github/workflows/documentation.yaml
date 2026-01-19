@@ -69,7 +69,7 @@ jobs:
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>ESP32-Lepton Component Documentation</title>
+          <title>ESP32-CalDAV Component Documentation</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -153,18 +153,15 @@ jobs:
           </style>
         </head>
         <body>
-          <h1>🔥 ESP32-Lepton Component Documentation</h1>
+          <h1>� ESP32-CalDAV Component Documentation</h1>
           
           <div class="header-info">
-            <p><strong>FLIR Lepton Thermal Camera Driver for ESP32</strong></p>
-            <p>Complete driver implementation for FLIR Lepton 3.0 and 3.5 thermal imaging sensors on ESP32 platforms.</p>
+            <p><strong>CalDAV Client for ESP32</strong></p>
+            <p>Complete client implementation for CalDAV protocol on ESP32 platforms.</p>
             <p>
               <span class="badge">ESP-IDF</span>
-              <span class="badge">SPI</span>
-              <span class="badge">I2C</span>
-              <span class="badge">FreeRTOS</span>
-              <span class="badge">Radiometric</span>
-              <span class="badge">FLIR</span>
+              <span class="badge">CalDAV</span>
+              <span class="badge">HTTPS</span>
             </p>
           </div>
           
@@ -175,8 +172,17 @@ jobs:
         # Add documentation entries
         cat >> public/index.html << 'EOF'
             <div class="doc-item">
-              <h3>📋 Component Overview</h3>
-              <p>Introduction to the ESP32-Lepton component, architecture, and getting started guide.</p>
+              <h3>📚 Documentation Overview</h3>
+              <p>Main entry point with links to all documentation sections.</p>
+              <div class="doc-links">
+                <a href="README.html">📄 HTML</a>
+                <a href="pdf/README.pdf">📕 PDF</a>
+              </div>
+            </div>
+            
+            <div class="doc-item">
+              <h3>📋 API Reference & Guide</h3>
+              <p>Complete API reference, installation guide, configuration options, and troubleshooting.</p>
               <div class="doc-links">
                 <a href="overview.html">📄 HTML</a>
                 <a href="pdf/index.pdf">📕 PDF</a>
@@ -184,47 +190,20 @@ jobs:
             </div>
             
             <div class="doc-item">
-              <h3>🎯 Main Driver (lepton)</h3>
-              <p>Core driver API providing initialization, configuration, and high-level control functions.</p>
+              <h3>💡 Code Examples</h3>
+              <p>Practical examples showing connection tests, calendar listing, event fetching, and full applications.</p>
               <div class="doc-links">
-                <a href="lepton.html">📄 HTML</a>
-                <a href="pdf/lepton.pdf">📕 PDF</a>
+                <a href="examples.html">📄 HTML</a>
+                <a href="pdf/examples.pdf">📕 PDF</a>
               </div>
             </div>
             
             <div class="doc-item">
-              <h3>📸 Frame Capture (lepton_capture)</h3>
-              <p>FreeRTOS task implementation for continuous frame acquisition with VSync support.</p>
+              <h3>❓ FAQ & Troubleshooting</h3>
+              <p>Frequently asked questions, common issues, and solutions for configuration and debugging.</p>
               <div class="doc-links">
-                <a href="lepton_capture.html">📄 HTML</a>
-                <a href="pdf/lepton_capture.pdf">📕 PDF</a>
-              </div>
-            </div>
-            
-            <div class="doc-item">
-              <h3>⚙️ CCI Commands (lepton_cci)</h3>
-              <p>High-level command interface for sensor configuration and control via I2C.</p>
-              <div class="doc-links">
-                <a href="lepton_cci.html">📄 HTML</a>
-                <a href="pdf/lepton_cci.pdf">📕 PDF</a>
-              </div>
-            </div>
-            
-            <div class="doc-item">
-              <h3>🔌 CCI Low-Level (cci)</h3>
-              <p>Low-level I2C protocol implementation for Command and Control Interface.</p>
-              <div class="doc-links">
-                <a href="cci.html">📄 HTML</a>
-                <a href="pdf/cci.pdf">📕 PDF</a>
-              </div>
-            </div>
-            
-            <div class="doc-item">
-              <h3>🎥 VoSPI Interface (vospi)</h3>
-              <p>SPI-based video interface for high-speed thermal data acquisition with DMA.</p>
-              <div class="doc-links">
-                <a href="vospi.html">📄 HTML</a>
-                <a href="pdf/vospi.pdf">📕 PDF</a>
+                <a href="faq.html">📄 HTML</a>
+                <a href="pdf/faq.pdf">📕 PDF</a>
               </div>
             </div>
         EOF
@@ -234,7 +213,7 @@ jobs:
           </div>
           
           <div class="footer">
-            <p><strong>ESP32-Lepton Component</strong> - FLIR Lepton Thermal Imaging Driver</p>
+            <p><strong>ESP32-CalDAV Component</strong> - CalDAV Client for ESP32</p>
             <p>Copyright © Daniel Kampert, 2026 | GNU General Public License v3.0</p>
             <p>Website: <a href="https://www.kampis-elektroecke.de">www.kampis-elektroecke.de</a></p>
             <p>Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')</p>
@@ -246,7 +225,7 @@ jobs:
     - name: Upload Artifact - Documentation
       uses: actions/upload-artifact@v4
       with:
-        name: ESP32-Lepton-Documentation
+        name: ESP32-CalDAV-Documentation
         path: docs/public
 
   deploy:
@@ -265,7 +244,7 @@ jobs:
 
     - name: Organize and create tarball
       run: |
-        mv ESP32-Lepton-Documentation public
+        mv ESP32-CalDAV-Documentation public
 
         # Create renamed copies for GitHub Releases (with -nightly suffix)
         mkdir -p release_pdfs
@@ -279,7 +258,7 @@ jobs:
         cd ../..
         
         # Create tarball
-        tar zvcf ESP32-Lepton-Docs-nightly.tar.gz -C public .
+        tar zvcf ESP32-CalDAV-Docs-nightly.tar.gz -C public .
 
     - name: Deploy to GitHub Releases
       env:
@@ -288,11 +267,11 @@ jobs:
         gh release view nightly 2>/dev/null || \
           gh release create nightly \
             --title "Nightly Documentation Build" \
-            --notes "Automatically generated documentation for ESP32-Lepton component" \
+            --notes "Automatically generated documentation for ESP32-CalDAV component" \
             --prerelease
 
         gh release upload nightly \
-          ESP32-Lepton-Docs-nightly.tar.gz \
+          ESP32-CalDAV-Docs-nightly.tar.gz \
           release_pdfs/*.pdf --clobber
 
     - name: Deploy to GitHub Pages
