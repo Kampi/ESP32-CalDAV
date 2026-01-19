@@ -1,6 +1,6 @@
 # ESP32-CalDAV
 
-CalDAV driver for the esp-idf.
+CalDAV implementation for the esp-idf.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?logo=opensourceinitiative)](https://www.gnu.org/licenses/gpl-3.0)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.1+-blue.svg)](https://github.com/espressif/esp-idf)
@@ -31,8 +31,8 @@ Add to your `main/idf_component.yml`:
 
 ```yaml
 dependencies:
-  esp32-webdav:
-    git: https://github.com/Kampi/ESP32-WebDAV.git
+  esp32-caldav:
+    git: https://github.com/Kampi/ESP32-CalDAV.git
 ```
 
 ### Manual Installation
@@ -41,7 +41,7 @@ dependencies:
 
 ```bash
 cd your_project/components
-git clone https://github.com/Kampi/ESP32-WebDAV.git
+git clone https://github.com/Kampi/ESP32-CalDAV.git
 ```
 
 ## Kconfig Options
@@ -49,7 +49,7 @@ git clone https://github.com/Kampi/ESP32-WebDAV.git
 Configure via `idf.py menuconfig`:
 
 ```sh
-Component config → ESP32-WebDAV
+Component config → ESP32-CalDAV
 ```
 
 ## Examples
