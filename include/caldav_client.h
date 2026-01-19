@@ -3,7 +3,7 @@
  *
  *  Copyright (C) Daniel Kampert, 2026
  *  Website: www.kampis-elektroecke.de
- *  File info: CalDAV client implementation with CalDAV support.
+ *  File info: CalDAV client implementation.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #define ESP32_CALDAV_CLIENT_H_
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -34,38 +35,38 @@ extern "C" {
 /** @brief CalDAV error codes.
  */
 typedef enum {
-    CALDAV_ERR_OK = 0,              /**< Operation successful. */
-    CALDAV_ERR_INVALID_ARG,         /**< Invalid argument provided. */
-    CALDAV_ERR_NO_MEM,              /**< Out of memory. */
-    CALDAV_ERR_FAIL,                /**< General failure. */
-    CALDAV_ERR_NOT_INITIALIZED,     /**< CalDAV client not initialized. */
-    CALDAV_ERR_CONNECTION,          /**< Connection error. */
-    CALDAV_ERR_HTTP,                /**< HTTP protocol error. */
-    CALDAV_ERR_TIMEOUT,             /**< Operation timeout. */
+    CALDAV_ERROR_OK = 0,            /**< Operation successful. */
+    CALDAV_ERROR_INVALID_ARG,       /**< Invalid argument provided. */
+    CALDAV_ERROR_NO_MEM,            /**< Out of memory. */
+    CALDAV_ERROR_FAIL,              /**< General failure. */
+    CALDAV_ERROR_NOT_INITIALIZED,   /**< CalDAV client not initialized. */
+    CALDAV_ERROR_CONNECTION,        /**< Connection error. */
+    CALDAV_ERROR_HTTP,              /**< HTTP protocol error. */
+    CALDAV_ERROR_TIMEOUT,           /**< Operation timeout. */
 } CalDAV_Error_t;
 
 /** @brief CalDAV client configuration.
  */
 typedef struct {
-    const char *server_url;         /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
-    const char *username;           /**< Username for authentication. */
-    const char *password;           /**< Password for authentication. */
-    const char *calendar_path;      /**< Path to calendar (e.g. /calendars/user/calendar-name/). */
-    uint32_t timeout_ms;            /**< Timeout in milliseconds. */
-    bool use_https;                 /**< true for HTTPS, false for HTTP. */
+    const char *ServerURL;          /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
+    const char *Username;           /**< Username for authentication. */
+    const char *Password;           /**< Password for authentication. */
+    const char *CalendarPath;      /**< Path to calendar (e.g. /calendars/user/calendar-name/). */
+    uint32_t TimeoutMs;            /**< Timeout in milliseconds. */
+    bool UseHTTPS;                 /**< true for HTTPS, false for HTTP. */
 } CalDAV_Config_t;
 
-/** @brief CalDAV client handle (opaque). */
+/** @brief CalDAV client handle. */
 typedef struct CalDAV_Client_t CalDAV_Client_t;
 
 /** @brief Calendar information structure.
  */
 typedef struct {
-    char *name;                     /**< Calendar name (extracted from path). */
-    char *path;                     /**< Calendar path (relative to server). */
-    char *display_name;             /**< Display name for UI. */
-    char *description;              /**< Calendar description (optional). */
-    char *color;                    /**< Calendar color in hex format (optional). */
+    char *Name;                     /**< Calendar name (extracted from path). */
+    char *Path;                     /**< Calendar path (relative to server). */
+    char *DisplayName;             /**< Display name for UI. */
+    char *Description;              /**< Calendar description (optional). */
+    char *Color;                    /**< Calendar color in hex format (optional). */
 } CalDAV_Calendar_t;
 
 /** @brief Calendar event data structure.
@@ -92,7 +93,7 @@ void CalDAV_Client_Deinit(CalDAV_Client_t *p_Client);
 
 /** @brief          Tests the connection to the CalDAV server.
  *  @param p_Client CalDAV client handle (must not be NULL)
- *  @return         CALDAV_ERR_OK on success, error code otherwise
+ *  @return         CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client);
 
@@ -100,7 +101,7 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client);
  *  @param p_Client     CalDAV client handle (must not be NULL)
  *  @param p_Calendars  Pointer to calendar array pointer (will be allocated, caller must free with CalDAV_Calendars_Free)
  *  @param p_Length     Pointer to store the number of calendars found
- *  @return             CALDAV_ERR_OK on success, error code otherwise
+ *  @return             CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
                                       CalDAV_Calendar_t **p_Calendars,
@@ -112,7 +113,7 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
  *  @param p_Length     Pointer to store the number of events found
  *  @param p_StartTime  Time range filter start in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20200101T000000Z")
  *  @param p_EndTime    Time range filter end in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20301231T235959Z")
- *  @return             CALDAV_ERR_OK on success, error code otherwise
+ *  @return             CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                             CalDAV_Calendar_Event_t **p_Events,
@@ -136,7 +137,7 @@ void CalDAV_Calendars_Free(CalDAV_Calendar_t *p_Calendars, size_t Length);
  *  @param p_Client     CalDAV client handle (must not be NULL)
  *  @param p_EventPath  Path to the event resource (e.g. "event.ics")
  *  @param p_Event      Pointer to event structure to fill
- *  @return             CALDAV_ERR_OK on success, error code otherwise
+ *  @return             CALDAV_ERROR_OK on success, error code otherwise
  *  @note               This function is not yet fully implemented
  */
 CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
