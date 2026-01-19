@@ -1,0 +1,8 @@
+menu "ESP32-CalDAV"
+    config ESP32_CALDAV_USEPSRAM
+        depends on SPIRAM
+        bool "Use PSRAM for data buffers"
+        default n
+        help
+          Enable this option to use PSRAM for data buffers if available.
+endmenu
