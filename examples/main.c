@@ -10,30 +10,30 @@ static void CalDAV_Example_Test_Connection(void)
 {
     ESP_LOGI(TAG, "Running CalDAV Connection test...");
 
-    caldav_config_t config = {
-        .server_url = "...",
-        .username = "...",
-        .password = "...",
-        .calendar_path = "",
-        .timeout_ms = 5000,
-        .use_https = true,
+    CalDAV_Config_t Config = {
+        .ServerURL = "...",
+        .Username = "...",
+        .Password = "...",
+        .CalendarPath = "",
+        .TimeoutMs = 5000,
+        .UseHTTPS = true,
     };
 
-    caldav_client_t *client = CalDAV_Client_Init(&config);
-    if (client == false) {
+    CalDAV_Client_t *Client = CalDAV_Client_Init(&Config);
+    if (Client == NULL) {
         ESP_LOGE(TAG, "CalDAV client initialization failed!");
 
         return;
     }
 
-    CalDAV_Error_t err = CalDAV_Test_Connection(client);
-    if (err == CALDAV_ERR_OK) {
+    CalDAV_Error_t err = CalDAV_Test_Connection(Client);
+    if (err == CALDAV_ERROR_OK) {
         ESP_LOGI(TAG, "Connection successful!");
     } else {
         ESP_LOGE(TAG, "Connection failed (Error: %d)", err);
     }
 
-    CalDAV_Client_Deinit(client);
+    CalDAV_Client_Deinit(Client);
 }
 
 void app_main(void)
