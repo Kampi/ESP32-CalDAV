@@ -1,5 +1,8 @@
 #include <esp_log.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include <stdio.h>
 
 #include "caldav_client.h"
@@ -38,7 +41,7 @@ static void CalDAV_Example_Test_Connection(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Opening WiFi-Verbindung...");
+    ESP_LOGI(TAG, "Opening WiFi connection...");
 
     /* Implement this functions */
     wifi_connect_init();

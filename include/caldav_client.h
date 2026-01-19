@@ -28,10 +28,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /** @brief CalDAV error codes.
  */
 typedef enum {
@@ -51,9 +47,8 @@ typedef struct {
     const char *ServerURL;          /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
     const char *Username;           /**< Username for authentication. */
     const char *Password;           /**< Password for authentication. */
-    const char *CalendarPath;      /**< Path to calendar (e.g. /calendars/user/calendar-name/). */
-    uint32_t TimeoutMs;            /**< Timeout in milliseconds. */
-    bool UseHTTPS;                 /**< true for HTTPS, false for HTTP. */
+    const char *CalendarPath;       /**< Path to calendar (e.g. /calendars/user/calendar-name/). */
+    uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
 } CalDAV_Config_t;
 
 /** @brief CalDAV client handle. */
@@ -64,7 +59,7 @@ typedef struct CalDAV_Client_t CalDAV_Client_t;
 typedef struct {
     char *Name;                     /**< Calendar name (extracted from path). */
     char *Path;                     /**< Calendar path (relative to server). */
-    char *DisplayName;             /**< Display name for UI. */
+    char *DisplayName;              /**< Display name for UI. */
     char *Description;              /**< Calendar description (optional). */
     char *Color;                    /**< Calendar color in hex format (optional). */
 } CalDAV_Calendar_t;
@@ -72,12 +67,12 @@ typedef struct {
 /** @brief Calendar event data structure.
  */
 typedef struct {
-    char *uid;                      /**< Event unique identifier. */
-    char *summary;                  /**< Event title/summary. */
-    char *description;              /**< Event description (optional). */
-    char *start_time;               /**< Start time in ISO 8601 format. */
-    char *end_time;                 /**< End time in ISO 8601 format. */
-    char *location;                 /**< Event location (optional). */
+    char *UID;                      /**< Event unique identifier. */
+    char *Summary;                  /**< Event title/summary. */
+    char *Description;              /**< Event description (optional). */
+    char *StartTime;                /**< Start time in ISO 8601 format. */
+    char *EndTime;                  /**< End time in ISO 8601 format. */
+    char *Location;                 /**< Event location (optional). */
 } CalDAV_Calendar_Event_t;
 
 /** @brief          Initializes the CalDAV client with given configuration.
@@ -121,6 +116,17 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            const char *p_StartTime,
                                            const char *p_EndTime);
 
+/** @brief              Retrieves a specific calendar event.
+ *  @param p_Client     CalDAV client handle (must not be NULL)
+ *  @param p_EventPath  Path to the event resource (e.g. "event.ics")
+ *  @param p_Event      Pointer to event structure to fill
+ *  @return             CALDAV_ERROR_OK on success, error code otherwise
+ *  @note               This function is not yet fully implemented
+ */
+CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
+                                         const char *p_EventPath,
+                                         CalDAV_Calendar_Event_t *p_Event);
+
 /** @brief          Frees memory allocated for event data.
  *  @param p_Events Event array to free
  *  @param Length   Number of events in the array
@@ -133,19 +139,4 @@ void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length);
  */
 void CalDAV_Calendars_Free(CalDAV_Calendar_t *p_Calendars, size_t Length);
 
-/** @brief              Retrieves a specific calendar event.
- *  @param p_Client     CalDAV client handle (must not be NULL)
- *  @param p_EventPath  Path to the event resource (e.g. "event.ics")
- *  @param p_Event      Pointer to event structure to fill
- *  @return             CALDAV_ERROR_OK on success, error code otherwise
- *  @note               This function is not yet fully implemented
- */
-CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
-                                         const char *p_EventPath,
-                                         CalDAV_Calendar_Event_t *p_Event);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // ESP32_CALDAV_CLIENT_H_
+#endif /* ESP32_CALDAV_CLIENT_H_ */
