@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <string>
 
 /** @brief CalDAV error codes.
  */
@@ -47,12 +48,18 @@ typedef struct {
     const char *ServerURL;          /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
     const char *Username;           /**< Username for authentication. */
     const char *Password;           /**< Password for authentication. */
-    const char *CalendarPath;       /**< Path to calendar (e.g. /calendars/user/calendar-name/). */
     uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
 } CalDAV_Config_t;
 
-/** @brief CalDAV client handle. */
-typedef struct CalDAV_Client_t CalDAV_Client_t;
+/** @brief CalDAV client handle.
+ */
+typedef struct {
+    std::string ServerURL;          /**< CalDAV server URL. */
+    std::string Username;           /**< Username for authentication. */
+    std::string Password;           /**< Password for authentication. */
+    uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
+    bool IsInitialized;             /**< Indicates if the client is initialized. */
+} CalDAV_Client_t;
 
 /** @brief Calendar information structure.
  */
@@ -63,6 +70,13 @@ typedef struct {
     char *Description;              /**< Calendar description (optional). */
     char *Color;                    /**< Calendar color in hex format (optional). */
 } CalDAV_Calendar_t;
+
+/** @brief Calendar list data structure.
+ */
+typedef struct {
+    CalDAV_Calendar_t *Calendar;    /**< Pointer to an array of calendars. */
+    size_t Length;                  /**< Number of calendars in the array. */
+} CalDAV_Calendar_List_t;
 
 /** @brief Calendar event data structure.
  */
@@ -94,38 +108,27 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client);
 
 /** @brief              Lists all available calendars from the CalDAV server.
  *  @param p_Client     CalDAV client handle (must not be NULL)
- *  @param p_Calendars  Pointer to calendar array pointer (will be allocated, caller must free with CalDAV_Calendars_Free)
- *  @param p_Length     Pointer to store the number of calendars found
+ *  @param p_Calendars  Pointer to calendar list (will be allocated, caller must free with CalDAV_Calendars_Free)
  *  @return             CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
-                                     CalDAV_Calendar_t **p_Calendars,
-                                     size_t *p_Length);
+                                     CalDAV_Calendar_List_t *p_Calendars);
 
-/** @brief              Lists all events from the configured calendar.
- *  @param p_Client     CalDAV client handle (must not be NULL, calendar_path must be set in config)
- *  @param p_Events     Pointer to event array pointer (will be allocated, caller must free with CalDAV_Events_Free)
- *  @param p_Length     Pointer to store the number of events found
- *  @param p_StartTime  Time range filter start in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20200101T000000Z")
- *  @param p_EndTime    Time range filter end in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20301231T235959Z")
- *  @return             CALDAV_ERROR_OK on success, error code otherwise
+/** @brief                  Lists all events from the configured calendar.
+ *  @param p_Client         CalDAV client handle (must not be NULL, calendar_path must be set in config)
+ *  @param p_Events         Pointer to event array pointer (will be allocated, caller must free with CalDAV_Events_Free)
+ *  @param p_Length         Pointer to store the number of events found
+ *  @param p_CalendarPath   Path to the calendar resource (e.g. "/calendars/user/calendar-name/")
+ *  @param p_StartTime      Time range filter start in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20200101T000000Z")
+ *  @param p_EndTime        Time range filter end in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20301231T235959Z")
+ *  @return                 CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            CalDAV_Calendar_Event_t **p_Events,
                                            size_t *p_Length,
+                                           const char *p_CalendarPath,
                                            const char *p_StartTime,
                                            const char *p_EndTime);
-
-/** @brief              Retrieves a specific calendar event.
- *  @param p_Client     CalDAV client handle (must not be NULL)
- *  @param p_EventPath  Path to the event resource (e.g. "event.ics")
- *  @param p_Event      Pointer to event structure to fill
- *  @return             CALDAV_ERROR_OK on success, error code otherwise
- *  @note               This function is not yet fully implemented
- */
-CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
-                                         const char *p_EventPath,
-                                         CalDAV_Calendar_Event_t *p_Event);
 
 /** @brief          Frees memory allocated for event data.
  *  @param p_Events Event array to free
@@ -134,9 +137,8 @@ CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
 void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length);
 
 /** @brief              Frees memory allocated for calendar data.
- *  @param p_Calendars  Calendar array to free
- *  @param Length       Number of calendars in the array
+ *  @param p_Calendars  Calendar list to free
  */
-void CalDAV_Calendars_Free(CalDAV_Calendar_t *p_Calendars, size_t Length);
+void CalDAV_Calendars_Free(CalDAV_Calendar_List_t *p_Calendars);
 
 #endif /* ESP32_CALDAV_CLIENT_H_ */

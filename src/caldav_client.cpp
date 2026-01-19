@@ -25,6 +25,10 @@
 #include <esp_crt_bundle.h>
 #include <esp_http_client.h>
 
+#ifdef CONFIG_ESP32_CALDAV_USEPSRAM
+#include <esp_heap_caps.h>
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -63,17 +67,6 @@ static inline char *_CalDAV_String_to_cstr(const std::string &str)
  */
 static thread_local esp_http_client_config_t _CalDAV_HTTP_Config;
 
-/** @brief
- */
-struct CalDAV_Client_t {
-    std::string ServerURL;
-    std::string Username;
-    std::string Password;
-    std::string CalendarPath;
-    uint32_t TimeoutMs;
-    bool IsInitialized;
-};
-
 /** @brief  Buffer used to accumulate HTTP response data.
  *          This structure holds a dynamically allocated character buffer, its current
  *          total size, and the write position used while assembling the complete
@@ -83,7 +76,7 @@ typedef struct {
     char *Buffer;
     size_t Size;
     size_t Position;
-} http_response_buffer_t;
+} HTTP_Response_Buffer_t;
 
 /** @brief          HTTP Event Handler
  *  @param p_Event  Pointer to HTTP Event
@@ -91,13 +84,19 @@ typedef struct {
  */
 static esp_err_t on_HTTP_Event_Handler(esp_http_client_event_t *p_Event)
 {
-    http_response_buffer_t *p_OutputBuffer = (http_response_buffer_t *)p_Event->user_data;
+    HTTP_Response_Buffer_t *p_OutputBuffer = (HTTP_Response_Buffer_t *)p_Event->user_data;
 
     switch (p_Event->event_id) {
         case HTTP_EVENT_ON_DATA: {
             /* Allocate buffer if not yet available */
             if (p_OutputBuffer->Buffer == NULL) {
+
+#ifdef CONFIG_ESP32_CALDAV_USEPSRAM
+                p_OutputBuffer->Buffer = (char *)heap_caps_malloc(CALDAV_HTTP_BUFFER_LENGTH, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
                 p_OutputBuffer->Buffer = (char *)malloc(CALDAV_HTTP_BUFFER_LENGTH);
+#endif
+
                 p_OutputBuffer->Size = CALDAV_HTTP_BUFFER_LENGTH;
                 p_OutputBuffer->Position = 0;
 
@@ -143,6 +142,18 @@ static esp_err_t on_HTTP_Event_Handler(esp_http_client_event_t *p_Event)
 }
 
 /** @brief
+ *  @param p_Memory
+ */
+static void _CalDAV_FreeMemory(void *p_Memory)
+{
+#ifdef CONFIG_ESP32_CALDAV_USEPSRAM
+    heap_caps_free(p_Memory);
+#else
+    free(p_Memory);
+#endif
+}
+
+/** @brief
  *  @param Data
  *  @param Field
  *  @return
@@ -151,6 +162,7 @@ static std::string _CalDAV_Extract_iCal_Field(const std::string &Data, const std
 {
     size_t Start = Data.find(Field);
     size_t End;
+    size_t ColonPos;
     std::string Value;
 
     if (Start == std::string::npos) {
@@ -158,15 +170,23 @@ static std::string _CalDAV_Extract_iCal_Field(const std::string &Data, const std
     }
 
     Start += Field.length();
-    End = Data.find_first_of("\n\r", Start);
 
+    ColonPos = Data.find(':', Start);
+    if (ColonPos != std::string::npos) {
+        /* Check if colon is before the line end */
+        size_t LineEnd = Data.find_first_of("\n\r", Start);
+        if ((LineEnd == std::string::npos) || (ColonPos < LineEnd)) {
+            Start = ColonPos + 1;
+        }
+    }
+
+    End = Data.find_first_of("\n\r", Start);
     if (End == std::string::npos) {
         return Data.substr(Start);
     }
 
-    Value = Data.substr(Start, End - Start);
-
     /* Remove possible \r at the end */
+    Value = Data.substr(Start, End - Start);
     if ((Value.empty() == false) && (Value.back() == '\r')) {
         Value.pop_back();
     }
@@ -220,7 +240,7 @@ CalDAV_Client_t *CalDAV_Client_Init(const CalDAV_Config_t *p_Config)
 
     /* Initialize HTTP config completely to avoid garbage values */
     memset(&_CalDAV_HTTP_Config, 0, sizeof(_CalDAV_HTTP_Config));
-    
+
     _CalDAV_HTTP_Config.transport_type = HTTP_TRANSPORT_OVER_SSL;
     _CalDAV_HTTP_Config.crt_bundle_attach = esp_crt_bundle_attach;
 
@@ -235,11 +255,6 @@ CalDAV_Client_t *CalDAV_Client_Init(const CalDAV_Config_t *p_Config)
     Client->Username = std::string(p_Config->Username);
     Client->Password = std::string(p_Config->Password);
     Client->TimeoutMs = p_Config->TimeoutMs;
-
-    if (p_Config->CalendarPath) {
-        Client->CalendarPath = std::string(p_Config->CalendarPath);
-    }
-
     Client->IsInitialized = true;
 
     ESP_LOGD(TAG, "CalDAV client initialized: %s", p_Config->ServerURL);
@@ -260,7 +275,7 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client)
 {
     esp_err_t Error;
     int StatusCode;
-    http_response_buffer_t Response;
+    HTTP_Response_Buffer_t Response;
     esp_http_client_handle_t HTTP_Client;
 
     if ((p_Client == NULL) || (p_Client->IsInitialized == false)) {
@@ -291,7 +306,7 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client)
 
     esp_http_client_cleanup(HTTP_Client);
     if (Response.Buffer) {
-        free(Response.Buffer);
+        _CalDAV_FreeMemory(Response.Buffer);
     }
 
     if (Error != ESP_OK) {
@@ -316,22 +331,21 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client)
 }
 
 CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
-                                     CalDAV_Calendar_t **p_Calendars,
-                                     size_t *p_Length)
+                                     CalDAV_Calendar_List_t *p_Calendars)
 {
     char url[512];
     esp_err_t Error;
     int StatusCode;
-    http_response_buffer_t Response;
+    HTTP_Response_Buffer_t Response;
     esp_http_client_handle_t HTTP_Client;
 
-    if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (p_Calendars == NULL) || (p_Length == NULL)) {
+    if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (p_Calendars == NULL)) {
         return CALDAV_ERROR_INVALID_ARG;
     }
 
     memset(&Response, 0, sizeof(Response));
+    memset(url, 0, sizeof(url));
 
-    /* Use server URL as base for calendar search */
     snprintf(url, sizeof(url), "%s", p_Client->ServerURL.c_str());
 
     ESP_LOGD(TAG, "Searching calendars on: %s", url);
@@ -362,18 +376,18 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
     esp_http_client_cleanup(HTTP_Client);
 
     if (Error != ESP_OK) {
-        ESP_LOGE(TAG, "Calendar PROPFIND failed: %d", Error);
+        ESP_LOGE(TAG, "Calendar PROPFIND failed: %d!", Error);
         if (Response.Buffer) {
-            free(Response.Buffer);
+            _CalDAV_FreeMemory(Response.Buffer);
         }
 
         return CALDAV_ERROR_HTTP;
     }
 
     if ((StatusCode != 200) && (StatusCode != 207)) {
-        ESP_LOGE(TAG, "Calendar PROPFIND unexpected status: %d", StatusCode);
+        ESP_LOGE(TAG, "Calendar PROPFIND unexpected status: %d!", StatusCode);
         if (Response.Buffer) {
-            free(Response.Buffer);
+            _CalDAV_FreeMemory(Response.Buffer);
         }
 
         return CALDAV_ERROR_HTTP;
@@ -388,7 +402,7 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
         size_t SearchPos = 0;
 
         std::string ResponseStr(Response.Buffer);
-        free(Response.Buffer);
+        _CalDAV_FreeMemory(Response.Buffer);
 
         /* Check for HTML response (indicates error) */
         if (ResponseStr.find("<!DOCTYPE html>") != std::string::npos ||
@@ -396,8 +410,8 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
             ResponseStr.find("<html ") != std::string::npos) {
             ESP_LOGE(TAG, "Invalid XML!");
 
-            *p_Length = 0;
-            *p_Calendars = NULL;
+            p_Calendars->Length = 0;
+            p_Calendars->Calendar = NULL;
 
             return CALDAV_ERROR_HTTP;
         }
@@ -414,8 +428,7 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
                     if (((ch >= 'A') && (ch <= 'Z')) || ((ch >= 'a') && (ch <= 'z')) ||
                         ((ch >= '0') && (ch <= '9')) || (ch == '/')) {
                         --i;
-                    }
-                    else {
+                    } else {
                         break;
                     }
                 }
@@ -438,16 +451,24 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
         ESP_LOGD(TAG, "Potential calendars found: %d", CalendarCount);
 
         if (CalendarCount == 0) {
-            *p_Length = 0;
-            *p_Calendars = NULL;
+            p_Calendars->Length = 0;
+            p_Calendars->Calendar = NULL;
+
             return CALDAV_ERROR_OK;
         }
 
         /* Allocate memory for all calendars */
-        *p_Calendars = (CalDAV_Calendar_t *)calloc(CalendarCount, sizeof(CalDAV_Calendar_t));
-        if (*p_Calendars == NULL) {
-            *p_Length = 0;
-            *p_Calendars = NULL;
+#ifdef CONFIG_ESP32_CALDAV_USEPSRAM
+        p_Calendars->Calendar = (CalDAV_Calendar_t *)heap_caps_calloc(CalendarCount, sizeof(CalDAV_Calendar_t),
+                                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+        p_Calendars->Calendar = (CalDAV_Calendar_t *)calloc(CalendarCount, sizeof(CalDAV_Calendar_t));
+#endif
+
+        if (p_Calendars->Calendar == NULL) {
+            p_Calendars->Length = 0;
+            p_Calendars->Calendar = NULL;
+
             return CALDAV_ERROR_NO_MEM;
         }
 
@@ -471,7 +492,7 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
                 /* Extract href (path) */
                 std::string HrefStr = _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "href");
                 if (HrefStr.empty() == false) {
-                    (*p_Calendars)[CurrentCalendar].Path = _CalDAV_String_to_cstr(HrefStr);
+                    p_Calendars->Calendar[CurrentCalendar].Path = _CalDAV_String_to_cstr(HrefStr);
                     ESP_LOGD(TAG, "  href: %s", HrefStr.c_str());
 
                     /* Extract calendar name from path */
@@ -479,34 +500,34 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
                     if (LastSlashPos != std::string::npos) {
                         if ((LastSlashPos + 1) < HrefStr.length()) {
                             /* Name after last slash */
-                            (*p_Calendars)[CurrentCalendar].Name = strdup(HrefStr.substr(LastSlashPos + 1).c_str());
+                            p_Calendars->Calendar[CurrentCalendar].Name = strdup(HrefStr.substr(LastSlashPos + 1).c_str());
                         } else if (LastSlashPos > 0) {
                             /* Path ends with /, take previous segment */
                             size_t PrevSlashPos = HrefStr.find_last_of('/', LastSlashPos - 1);
                             if (PrevSlashPos != std::string::npos) {
                                 std::string NamePart = HrefStr.substr(PrevSlashPos + 1, LastSlashPos - PrevSlashPos - 1);
-                                (*p_Calendars)[CurrentCalendar].Name = strdup(NamePart.c_str());
+                                p_Calendars->Calendar[CurrentCalendar].Name = strdup(NamePart.c_str());
                             }
                         }
                     }
                 }
 
-                (*p_Calendars)[CurrentCalendar].DisplayName = _CalDAV_String_to_cstr(
-                                                                  _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "displayname"));
-                (*p_Calendars)[CurrentCalendar].Description = _CalDAV_String_to_cstr(
-                                                                  _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "calendar-description"));
+                p_Calendars->Calendar[CurrentCalendar].DisplayName = _CalDAV_String_to_cstr(
+                                                                         _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "displayname"));
+                p_Calendars->Calendar[CurrentCalendar].Description = _CalDAV_String_to_cstr(
+                                                                         _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "calendar-description"));
 
                 ESP_LOGD(TAG, "Calendar %d:", CurrentCalendar + 1);
-                if ((*p_Calendars)[CurrentCalendar].Name) {
-                    ESP_LOGD(TAG, "  Name: %s", (*p_Calendars)[CurrentCalendar].Name);
+                if (p_Calendars->Calendar[CurrentCalendar].Name) {
+                    ESP_LOGD(TAG, "  Name: %s", p_Calendars->Calendar[CurrentCalendar].Name);
                 }
 
-                if ((*p_Calendars)[CurrentCalendar].DisplayName) {
-                    ESP_LOGD(TAG, "  Display name: %s", (*p_Calendars)[CurrentCalendar].DisplayName);
+                if (p_Calendars->Calendar[CurrentCalendar].DisplayName) {
+                    ESP_LOGD(TAG, "  Display name: %s", p_Calendars->Calendar[CurrentCalendar].DisplayName);
                 }
 
-                if ((*p_Calendars)[CurrentCalendar].Path) {
-                    ESP_LOGD(TAG, "  Path: %s", (*p_Calendars)[CurrentCalendar].Path);
+                if (p_Calendars->Calendar[CurrentCalendar].Path) {
+                    ESP_LOGD(TAG, "  Path: %s", p_Calendars->Calendar[CurrentCalendar].Path);
                 }
 
                 CurrentCalendar++;
@@ -515,10 +536,10 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
             SearchPos = ResponseEnd + 1;
         }
 
-        *p_Length = CurrentCalendar;
+        p_Calendars->Length = CurrentCalendar;
     } else {
-        *p_Length = 0;
-        *p_Calendars = NULL;
+        p_Calendars->Length = 0;
+        p_Calendars->Calendar = NULL;
     }
 
     return CALDAV_ERROR_OK;
@@ -527,30 +548,27 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            CalDAV_Calendar_Event_t **p_Events,
                                            size_t *Length,
+                                           const char *p_CalendarPath,
                                            const char *p_StartTime,
                                            const char *p_EndTime)
 {
     char url[512];
     esp_err_t Error;
     int StatusCode;
-    http_response_buffer_t Response;
+    HTTP_Response_Buffer_t Response;
     esp_http_client_handle_t HTTP_Client;
 
     if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (p_Events == NULL) || (Length == NULL) ||
-        (p_StartTime == NULL) || (p_EndTime == NULL)) {
+        (p_CalendarPath == NULL) || (p_StartTime == NULL) || (p_EndTime == NULL)) {
         return CALDAV_ERROR_INVALID_ARG;
     }
 
     memset(&Response, 0, sizeof(Response));
+    memset(url, 0, sizeof(url));
 
-    ESP_LOGD(TAG, "Time range: %s to %s", p_StartTime, p_EndTime);
+    snprintf(url, sizeof(url), "%s/%s", p_Client->ServerURL.c_str(), p_CalendarPath);
 
-    snprintf(url, sizeof(url), "%s%s",
-             p_Client->ServerURL.c_str(),
-             !p_Client->CalendarPath.empty() ? p_Client->CalendarPath.c_str() : "/");
-
-    ESP_LOGD(TAG, "CalDAV Query URL: %s", url);
-    ESP_LOGD(TAG, "calendar_path: '%s'", !p_Client->CalendarPath.empty() ? p_Client->CalendarPath.c_str() : "(empty)");
+    ESP_LOGD(TAG, "Fetching events from %s", url);
 
     _CalDAV_HTTP_Config.timeout_ms = p_Client->TimeoutMs;
     _CalDAV_HTTP_Config.event_handler = on_HTTP_Event_Handler;
@@ -586,10 +604,10 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
     RequestBody += "\" end=\"";
     RequestBody += p_EndTime;
     RequestBody += "\"/>\n"
-        "      </C:comp-filter>\n"
-        "    </C:comp-filter>\n"
-        "  </C:filter>\n"
-        "</C:calendar-query>";
+                   "      </C:comp-filter>\n"
+                   "    </C:comp-filter>\n"
+                   "  </C:filter>\n"
+                   "</C:calendar-query>";
     esp_http_client_set_post_field(HTTP_Client, RequestBody.c_str(), RequestBody.length());
 
     Error = esp_http_client_perform(HTTP_Client);
@@ -600,22 +618,25 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
     if ((Error != ESP_OK) || (StatusCode != 207)) {
         ESP_LOGE(TAG, "CalDAV-Query failed: %d (Status: %d)!", Error, StatusCode);
         if (Response.Buffer) {
-            free(Response.Buffer);
+            ESP_LOGD(TAG, "Response buffer content (first 500 chars): %.*s", 500, Response.Buffer);
+
+            _CalDAV_FreeMemory(Response.Buffer);
         }
 
         return CALDAV_ERROR_HTTP;
     }
 
-    ESP_LOGD(TAG, "CalDAV response received");
+    ESP_LOGD(TAG, "CalDAV response received (Status: %d)", StatusCode);
     if (Response.Buffer) {
         int EventCount = 0;
         int CurrentEvent = 0;
-        char *p_Pos = Response.Buffer;
+        std::string ResponseStr(Response.Buffer);
+        size_t SearchPos = 0;
 
         /* Count events in the response */
-        while ((p_Pos = strstr(p_Pos, "BEGIN:VEVENT")) != NULL) {
+        while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos) {
             EventCount++;
-            p_Pos += 12;
+            SearchPos += 12;
         }
 
         ESP_LOGD(TAG, "Found: %d events", EventCount);
@@ -624,54 +645,68 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
             *Length = 0;
             *p_Events = NULL;
 
-            free(Response.Buffer);
+            _CalDAV_FreeMemory(Response.Buffer);
 
             return CALDAV_ERROR_OK;
         }
 
+        ESP_LOGD(TAG, "Allocating memory for %d events (%zu bytes)", EventCount, EventCount * sizeof(CalDAV_Calendar_Event_t));
+
         /* Allocate memory for all events */
         *p_Events = (CalDAV_Calendar_Event_t *)calloc(EventCount, sizeof(CalDAV_Calendar_Event_t));
         if (*p_Events == NULL) {
-            free(Response.Buffer);
+            ESP_LOGE(TAG, "Failed to allocate memory for events!");
+
+            _CalDAV_FreeMemory(Response.Buffer);
 
             return CALDAV_ERROR_NO_MEM;
         }
 
-        /* Parse each event */
-        p_Pos = Response.Buffer;
+        ESP_LOGD(TAG, "Memory allocated successfully");
 
-        while ((p_Pos = strstr(p_Pos, "BEGIN:VEVENT")) != NULL && CurrentEvent < EventCount) {
+        /* Parse each event */
+        SearchPos = 0;
+
+        while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos && CurrentEvent < EventCount) {
             size_t EventLen;
-            char *EventEnd;
+            size_t EventEnd;
             char *EventData;
 
-            EventEnd = strstr(p_Pos, "END:VEVENT");
-
-            if (EventEnd == NULL) {
+            EventEnd = ResponseStr.find("END:VEVENT", SearchPos);
+            if (EventEnd == std::string::npos) {
                 break;
             }
 
             /* Extract event data */
-            EventLen = EventEnd - p_Pos + 10;
+            EventLen = EventEnd - SearchPos + 10;
+
+#ifdef CONFIG_ESP32_CALDAV_USEPSRAM
+            EventData = (char *)heap_caps_malloc(EventLen + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
             EventData = (char *)malloc(EventLen + 1);
-            if (!EventData) {
+#endif
+
+            if (EventData == NULL) {
                 /* Allocation failure for event data: clean up and return */
                 for (int i = 0; i < CurrentEvent; ++i) {
-                    free((*p_Events)[i].Summary);
-                    free((*p_Events)[i].Description);
-                    free((*p_Events)[i].Location);
-                    free((*p_Events)[i].UID);
-                    free((*p_Events)[i].StartTime);
-                    free((*p_Events)[i].EndTime);
+                    _CalDAV_FreeMemory((*p_Events)[i].Location);
+                    _CalDAV_FreeMemory((*p_Events)[i].Description);
+                    _CalDAV_FreeMemory((*p_Events)[i].Summary);
+                    _CalDAV_FreeMemory((*p_Events)[i].UID);
+                    _CalDAV_FreeMemory((*p_Events)[i].StartTime);
+                    _CalDAV_FreeMemory((*p_Events)[i].EndTime);
                 }
-                free(*p_Events);
+
                 *p_Events = NULL;
                 *Length = 0;
-                free(Response.Buffer);
+
+                _CalDAV_FreeMemory(p_Events);
+                _CalDAV_FreeMemory(Response.Buffer);
+
                 return CALDAV_ERROR_NO_MEM;
             }
 
-            memcpy(EventData, p_Pos, EventLen);
+            memcpy(EventData, Response.Buffer + SearchPos, EventLen);
             EventData[EventLen] = '\0';
 
             /* Parse iCal fields */
@@ -682,54 +717,19 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
             (*p_Events)[CurrentEvent].StartTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTSTART"));
             (*p_Events)[CurrentEvent].EndTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTEND"));
 
-            /* Verify allocations for all fields */
-            if (((*p_Events)[CurrentEvent].Summary == NULL) ||
-                ((*p_Events)[CurrentEvent].Description == NULL) ||
-                ((*p_Events)[CurrentEvent].Location == NULL) ||
-                ((*p_Events)[CurrentEvent].UID == NULL) ||
-                ((*p_Events)[CurrentEvent].StartTime == NULL) ||
-                ((*p_Events)[CurrentEvent].EndTime == NULL)) {
-                /* Free any fields allocated for the current event */
-                free((*p_Events)[CurrentEvent].Summary);
-                free((*p_Events)[CurrentEvent].Description);
-                free((*p_Events)[CurrentEvent].Location);
-                free((*p_Events)[CurrentEvent].UID);
-                free((*p_Events)[CurrentEvent].StartTime);
-                free((*p_Events)[CurrentEvent].EndTime);
-
-                /* Free all previously parsed events */
-                for (int i = 0; i < CurrentEvent; ++i) {
-                    free((*p_Events)[i].Summary);
-                    free((*p_Events)[i].Description);
-                    free((*p_Events)[i].Location);
-                    free((*p_Events)[i].UID);
-                    free((*p_Events)[i].StartTime);
-                    free((*p_Events)[i].EndTime);
-                }
-
-                *p_Events = NULL;
-                *Length = 0;
-
-                free(*p_Events);
-                free(EventData);
-                free(Response.Buffer);
-
-                return CALDAV_ERROR_NO_MEM;
-            }
-
             /* Log event details */
             if ((*p_Events)[CurrentEvent].Summary) {
                 ESP_LOGD(TAG, "Event %d: %s", CurrentEvent + 1, (*p_Events)[CurrentEvent].Summary);
             }
 
             CurrentEvent++;
-            free(EventData);
+            _CalDAV_FreeMemory(EventData);
 
-            p_Pos = EventEnd + 10;
+            SearchPos = EventEnd + 10;
         }
 
         *Length = CurrentEvent;
-        free(Response.Buffer);
+        _CalDAV_FreeMemory(Response.Buffer);
     } else {
         *Length = 0;
         *p_Events = NULL;
@@ -738,94 +738,35 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
     return CALDAV_ERROR_OK;
 }
 
-CalDAV_Error_t CalDAV_Calendar_Event_Get(CalDAV_Client_t *p_Client,
-                                         const char *EventPath,
-                                         CalDAV_Calendar_Event_t *p_Event)
-{
-    char url[512];
-    esp_err_t Error;
-    int StatusCode;
-    http_response_buffer_t Response;
-    esp_http_client_handle_t HTTP_Client;
-
-    if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (EventPath == NULL) || (p_Event == NULL)) {
-        return CALDAV_ERROR_INVALID_ARG;
-    }
-
-    memset(&Response, 0, sizeof(Response));
-
-    snprintf(url, sizeof(url), "%s%s%s",
-             p_Client->ServerURL.c_str(),
-             (p_Client->CalendarPath.empty() == false) ? p_Client->CalendarPath.c_str() : "/",
-             EventPath);
-
-    _CalDAV_HTTP_Config.timeout_ms = p_Client->TimeoutMs;
-    _CalDAV_HTTP_Config.event_handler = on_HTTP_Event_Handler;
-    _CalDAV_HTTP_Config.url = url;
-    _CalDAV_HTTP_Config.user_data = &Response;
-    HTTP_Client = esp_http_client_init(&_CalDAV_HTTP_Config);
-    if (HTTP_Client == NULL) {
-        return CALDAV_ERROR_FAIL;
-    }
-
-    esp_http_client_set_username(HTTP_Client, p_Client->Username.c_str());
-    esp_http_client_set_password(HTTP_Client, p_Client->Password.c_str());
-    esp_http_client_set_authtype(HTTP_Client, HTTP_AUTH_TYPE_BASIC);
-
-    Error = esp_http_client_perform(HTTP_Client);
-    StatusCode = esp_http_client_get_status_code(HTTP_Client);
-
-    esp_http_client_cleanup(HTTP_Client);
-
-    if ((Error != ESP_OK) || (StatusCode != 200)) {
-        ESP_LOGE(TAG, "Event download failed: %d (Status: %d)!", Error, StatusCode);
-        if (Response.Buffer) {
-            free(Response.Buffer);
-        }
-
-        return CALDAV_ERROR_HTTP;
-    }
-
-    if (Response.Buffer) {
-        ESP_LOGD(TAG, "Event data received:");
-        ESP_LOGD(TAG, "%s", Response.Buffer);
-        /* TODO: Parse iCal format */
-        free(Response.Buffer);
-    }
-
-    ESP_LOGW(TAG, "iCal parsing not yet implemented");
-
-    return CALDAV_ERROR_OK;
-}
-
-void CalDAV_Calendars_Free(CalDAV_Calendar_t *p_Calendars, size_t Length)
+void CalDAV_Calendars_Free(CalDAV_Calendar_List_t *p_Calendars)
 {
     if (p_Calendars == NULL) {
         return;
     }
 
-    for (size_t i = 0; i < Length; i++) {
-        if (p_Calendars[i].Name) {
-            free(p_Calendars[i].Name);
+    for (size_t i = 0; i < p_Calendars->Length; i++) {
+        if (p_Calendars->Calendar[i].Name) {
+            _CalDAV_FreeMemory(p_Calendars->Calendar[i].Name);
         }
 
-        if (p_Calendars[i].Path) {
-            free(p_Calendars[i].Path);
+        if (p_Calendars->Calendar[i].Path) {
+            _CalDAV_FreeMemory(p_Calendars->Calendar[i].Path);
         }
 
-        if (p_Calendars[i].DisplayName) {
-            free(p_Calendars[i].DisplayName);
+        if (p_Calendars->Calendar[i].DisplayName) {
+            _CalDAV_FreeMemory(p_Calendars->Calendar[i].DisplayName);
         }
 
-        if (p_Calendars[i].Description) {
-            free(p_Calendars[i].Description);
+        if (p_Calendars->Calendar[i].Description) {
+            _CalDAV_FreeMemory(p_Calendars->Calendar[i].Description);
         }
 
-        if (p_Calendars[i].Color) {
-            free(p_Calendars[i].Color);
+        if (p_Calendars->Calendar[i].Color) {
+            _CalDAV_FreeMemory(p_Calendars->Calendar[i].Color);
         }
     }
-    free(p_Calendars);
+
+    _CalDAV_FreeMemory(p_Calendars->Calendar);
 }
 
 void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length)
@@ -836,29 +777,29 @@ void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length)
 
     for (size_t i = 0; i < Length; i++) {
         if (p_Events[i].UID) {
-            free(p_Events[i].UID);
+            _CalDAV_FreeMemory(p_Events[i].UID);
         }
 
         if (p_Events[i].Summary) {
-            free(p_Events[i].Summary);
+            _CalDAV_FreeMemory(p_Events[i].Summary);
         }
 
         if (p_Events[i].Description) {
-            free(p_Events[i].Description);
+            _CalDAV_FreeMemory(p_Events[i].Description);
         }
 
         if (p_Events[i].StartTime) {
-            free(p_Events[i].StartTime);
+            _CalDAV_FreeMemory(p_Events[i].StartTime);
         }
 
         if (p_Events[i].EndTime) {
-            free(p_Events[i].EndTime);
+            _CalDAV_FreeMemory(p_Events[i].EndTime);
         }
 
         if (p_Events[i].Location) {
-            free(p_Events[i].Location);
+            _CalDAV_FreeMemory(p_Events[i].Location);
         }
     }
 
-    free(p_Events);
+    _CalDAV_FreeMemory(p_Events);
 }
