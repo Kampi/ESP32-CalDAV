@@ -1,8 +1,12 @@
 menu "ESP32-CalDAV"
-    config ESP32_CALDAV_USEPSRAM
+    config ESP32_CALDAV_USE_PSRAM
         depends on SPIRAM
         bool "Use PSRAM for data buffers"
         default n
         help
           Enable this option to use PSRAM for data buffers if available.
+
+    config ESP32_CALDAV_BUFFER_LENGTH
+        int "Size of the HTTP buffer"
+        default 4096
 endmenu
