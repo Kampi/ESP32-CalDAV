@@ -45,9 +45,9 @@ typedef enum {
 /** @brief CalDAV client configuration.
  */
 typedef struct {
-    const char *ServerURL;          /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
-    const char *Username;           /**< Username for authentication. */
-    const char *Password;           /**< Password for authentication. */
+    char ServerURL[256];            /**< CalDAV server URL (e.g. https://cloud.example.com/remote.php/dav). */
+    char Username[64];              /**< Username for authentication. */
+    char Password[64];              /**< Password for authentication. */
     uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
 } CalDAV_Config_t;
 
@@ -89,11 +89,16 @@ typedef struct {
     char *Location;                 /**< Event location (optional). */
 } CalDAV_Calendar_Event_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** @brief          Initializes the CalDAV client with given configuration.
  *  @param p_Config Pointer to configuration structure (must not be NULL)
- *  @return         CalDAV client handle on success, NULL on failure
+ *  @param p_Client Pointer to CalDAV client handle to initialize
+ *  @return         CALDAV_ERROR_OK on success, error code otherwise
  */
-CalDAV_Client_t *CalDAV_Client_Init(const CalDAV_Config_t *p_Config);
+CalDAV_Error_t CalDAV_Client_Init(const CalDAV_Config_t *p_Config, CalDAV_Client_t *p_Client);
 
 /** @brief          Deinitializes and frees the CalDAV client.
  *  @param p_Client CalDAV client handle
@@ -140,5 +145,9 @@ void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length);
  *  @param p_Calendars  Calendar list to free
  */
 void CalDAV_Calendars_Free(CalDAV_Calendar_List_t *p_Calendars);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ESP32_CALDAV_CLIENT_H_ */
