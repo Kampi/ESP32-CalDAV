@@ -327,8 +327,9 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
 
     snprintf(url, sizeof(url), "%s", p_Client->ServerURL.c_str());
 
-    ESP_LOGD(TAG, "Searching calendars on: %s", url);
+    ESP_LOGD(TAG, "Searching calendars on: %s (User: %s)", url, p_Client->Username.c_str());
 
+    /* First PROPFIND to find the user's principal path */
     _CalDAV_HTTP_Config.timeout_ms = p_Client->TimeoutMs;
     _CalDAV_HTTP_Config.event_handler = on_HTTP_Event_Handler;
     _CalDAV_HTTP_Config.url = url;
@@ -376,6 +377,8 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
     ESP_LOGD(TAG, "Response buffer: %s, position: %zu", Response.Buffer ? "available" : "NULL", Response.Position);
 
     if (Response.Buffer) {
+        ESP_LOGD(TAG, "PROPFIND Response (first 500 chars): %.*s", 500, Response.Buffer);
+        
         int CalendarCount = 0;
         int CurrentCalendar = 0;
         size_t SearchPos = 0;
@@ -447,6 +450,8 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
 
         /* Parse each calendar response block */
         SearchPos = 0;
+        
+        std::string PrincipalPath;
 
         while (((SearchPos = ResponseStr.find("<response>", SearchPos)) != std::string::npos) &&
                (CurrentCalendar < CalendarCount)) {
@@ -458,8 +463,36 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
             /* Extract this response block */
             std::string ResponseBlock = ResponseStr.substr(SearchPos, ResponseEnd - SearchPos);
 
-            /* Check if this response contains a calendar */
-            if (ResponseBlock.find(":calendar") != std::string::npos) {
+            /* Extract and log href for debugging */
+            std::string HrefStr = _CalDAV_Extract_XML_Tag_Value(ResponseBlock, "href");
+            ESP_LOGD(TAG, "Response href: %s", HrefStr.c_str());
+
+            /* Check if this response contains a calendar (not just a collection) */
+            /* Must have <resourcetype><calendar/> tag to be a real calendar */
+            bool isCalendar = false;
+            size_t ResTypePos = ResponseBlock.find("<resourcetype>");
+            if (ResTypePos != std::string::npos) {
+                size_t ResTypeEnd = ResponseBlock.find("</resourcetype>", ResTypePos);
+                if (ResTypeEnd != std::string::npos) {
+                    std::string ResTypeBlock = ResponseBlock.substr(ResTypePos, ResTypeEnd - ResTypePos);
+                    ESP_LOGD(TAG, "ResourceType block: %s", ResTypeBlock.c_str());
+                    if ((ResTypeBlock.find(":calendar") != std::string::npos) || 
+                        (ResTypeBlock.find("<calendar") != std::string::npos)) {
+                        isCalendar = true;
+                        ESP_LOGD(TAG, "  -> Is a calendar!");
+                    } else if (ResTypeBlock.find("<principal") != std::string::npos) {
+                        /* Store principal path for recursive search */
+                        if (PrincipalPath.empty() && !HrefStr.empty()) {
+                            PrincipalPath = HrefStr;
+                            ESP_LOGD(TAG, "  -> Found principal path: %s", PrincipalPath.c_str());
+                        }
+                    } else {
+                        ESP_LOGD(TAG, "  -> Not a calendar (only collection)");
+                    }
+                }
+            }
+            
+            if (isCalendar) {
                 ESP_LOGD(TAG, "Processing calendar response block");
 
                 /* Extract href (path) */
@@ -510,6 +543,32 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
         }
 
         p_Calendars->Length = CurrentCalendar;
+        
+        /* If no calendars found but we found a principal, search in the principal path */
+        if ((CurrentCalendar == 0) && !PrincipalPath.empty()) {
+            ESP_LOGD(TAG, "No calendars found, searching in principal path: %s", PrincipalPath.c_str());
+            
+            /* Build full URL with principal path */
+            /* Principal path is absolute from server root, so extract scheme://host */
+            std::string BaseURL = p_Client->ServerURL;
+            size_t SchemeEnd = BaseURL.find("://");
+            if (SchemeEnd != std::string::npos) {
+                size_t PathStart = BaseURL.find('/', SchemeEnd + 3);
+                if (PathStart != std::string::npos) {
+                    BaseURL = BaseURL.substr(0, PathStart);
+                }
+            }
+            
+            std::string FullURL = BaseURL + PrincipalPath;
+            ESP_LOGD(TAG, "Constructed principal URL: %s", FullURL.c_str());
+            
+            /* Create temporary client with principal URL */
+            CalDAV_Client_t TempClient = *p_Client;
+            TempClient.ServerURL = FullURL;
+            
+            /* Recursive call to search in principal path */
+            return CalDAV_Calendars_List(&TempClient, p_Calendars);
+        }
     } else {
         p_Calendars->Length = 0;
         p_Calendars->Calendar = NULL;
@@ -518,34 +577,106 @@ CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
     return CALDAV_ERROR_OK;
 }
 
+CalDAV_Error_t CalDAV_Calendar_Find_By_Name(const CalDAV_Calendar_List_t *p_Calendars,
+                                            const char *p_Name,
+                                            CalDAV_Calendar_t **pp_Calendar)
+{
+    if ((p_Calendars == NULL) || (p_Name == NULL) || (pp_Calendar == NULL)) {
+        return CALDAV_ERROR_INVALID_ARG;
+    }
+
+    *pp_Calendar = NULL;
+
+    /* Search through all calendars */
+    for (size_t i = 0; i < p_Calendars->Length; i++) {
+        bool Found = false;
+
+        /* Check Name field */
+        if (p_Calendars->Calendar[i].Name != NULL) {
+            if (strcmp(p_Calendars->Calendar[i].Name, p_Name) == 0) {
+                Found = true;
+            }
+        }
+
+        /* Check DisplayName field if not found yet */
+        if (!Found && (p_Calendars->Calendar[i].DisplayName != NULL)) {
+            if (strcmp(p_Calendars->Calendar[i].DisplayName, p_Name) == 0) {
+                Found = true;
+            }
+        }
+
+        if (Found) {
+            *pp_Calendar = &p_Calendars->Calendar[i];
+            ESP_LOGD(TAG, "Found calendar: %s (Path: %s)", 
+                     p_Name, 
+                     p_Calendars->Calendar[i].Path ? p_Calendars->Calendar[i].Path : "Unknown");
+
+            return CALDAV_ERROR_OK;
+        }
+    }
+
+    ESP_LOGW(TAG, "Calendar '%s' not found in list of %zu calendars", p_Name, p_Calendars->Length);
+
+    return CALDAV_ERROR_NOT_FOUND;
+}
+
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            CalDAV_Calendar_Event_t **p_Events,
                                            size_t *Length,
                                            const char *p_CalendarPath,
-                                           const char *p_StartTime,
-                                           const char *p_EndTime)
+                                           const struct tm* p_StartTime,
+                                           const struct tm* p_EndTime)
 {
-    char url[512];
+    char URL[512];
+    char StartTimeString[20];
+    char EndTimeString[20];
     esp_err_t Error;
     int StatusCode;
     HTTP_Response_Buffer_t Response;
     esp_http_client_handle_t HTTP_Client;
 
     if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (p_Events == NULL) || (Length == NULL) ||
-        (p_CalendarPath == NULL) || (p_StartTime == NULL) || (p_EndTime == NULL)) {
+        (p_CalendarPath == NULL)) {
         return CALDAV_ERROR_INVALID_ARG;
     }
 
     memset(&Response, 0, sizeof(Response));
-    memset(url, 0, sizeof(url));
+    memset(StartTimeString, 0, sizeof(StartTimeString));
+    memset(EndTimeString, 0, sizeof(EndTimeString));
+    memset(URL, 0, sizeof(URL));
 
-    snprintf(url, sizeof(url), "%s/%s", p_Client->ServerURL.c_str(), p_CalendarPath);
+    /* Format as CalDAV expects: YYYYMMDDTHHMMSSZ */
+    strftime(StartTimeString, sizeof(StartTimeString), "%Y%m%dT%H%M%SZ", p_StartTime);
+    strftime(EndTimeString, sizeof(EndTimeString), "%Y%m%dT%H%M%SZ", p_EndTime);
 
-    ESP_LOGD(TAG, "Fetching events from %s", url);
+    /* Build URL - if path is absolute (starts with /), use scheme://host + path */
+    if (p_CalendarPath[0] == '/') {
+        std::string BaseURL;
+        size_t SchemeEnd;
+
+        /* Extract base URL (scheme://host) */
+        BaseURL = p_Client->ServerURL;
+        SchemeEnd = BaseURL.find("://");
+        if (SchemeEnd != std::string::npos) {
+            size_t PathStart;
+            
+            PathStart = BaseURL.find('/', SchemeEnd + 3);
+            if (PathStart != std::string::npos) {
+                BaseURL = BaseURL.substr(0, PathStart);
+            }
+        }
+
+        snprintf(URL, sizeof(URL), "%s%s", BaseURL.c_str(), p_CalendarPath);
+    } else {
+        /* Relative path, append to server URL */
+        snprintf(URL, sizeof(URL), "%s/%s", p_Client->ServerURL.c_str(), p_CalendarPath);
+    }
+
+    ESP_LOGD(TAG, "Fetching events from %s between %s to %s", URL, StartTimeString, EndTimeString);
 
     _CalDAV_HTTP_Config.timeout_ms = p_Client->TimeoutMs;
     _CalDAV_HTTP_Config.event_handler = on_HTTP_Event_Handler;
-    _CalDAV_HTTP_Config.url = url;
+    _CalDAV_HTTP_Config.url = URL;
     _CalDAV_HTTP_Config.user_data = &Response;
     HTTP_Client = esp_http_client_init(&_CalDAV_HTTP_Config);
     if (HTTP_Client == NULL) {
@@ -573,9 +704,9 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
         "    <C:comp-filter name=\"VCALENDAR\">\n"
         "      <C:comp-filter name=\"VEVENT\">\n"
         "        <C:time-range start=\"";
-    RequestBody += p_StartTime;
+    RequestBody += StartTimeString;
     RequestBody += "\" end=\"";
-    RequestBody += p_EndTime;
+    RequestBody += EndTimeString;
     RequestBody += "\"/>\n"
                    "      </C:comp-filter>\n"
                    "    </C:comp-filter>\n"
@@ -588,10 +719,10 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
 
     esp_http_client_cleanup(HTTP_Client);
 
-    if ((Error != ESP_OK) || (StatusCode != 207)) {
+    if (Error != ESP_OK) {
         ESP_LOGE(TAG, "CalDAV-Query failed: %d (Status: %d)!", Error, StatusCode);
         if (Response.Buffer) {
-            ESP_LOGD(TAG, "Response buffer content (first 500 chars): %.*s", 500, Response.Buffer);
+            ESP_LOGE(TAG, "Response buffer content (first 500 chars): %.*s", 500, Response.Buffer);
 
             CUSTOM_FREE(Response.Buffer);
         }
@@ -599,47 +730,69 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
         return CALDAV_ERROR_HTTP;
     }
 
-    ESP_LOGD(TAG, "CalDAV response received (Status: %d)", StatusCode);
+    if ((StatusCode != 200) && (StatusCode != 207)) {
+        ESP_LOGE(TAG, "CalDAV-Query unexpected status: %d!", StatusCode);
+        if (Response.Buffer) {
+            ESP_LOGE(TAG, "Response buffer content (first 500 chars): %.*s", 500, Response.Buffer);
+
+            CUSTOM_FREE(Response.Buffer);
+        }
+
+        return CALDAV_ERROR_HTTP;
+    }
+
+    /* Log response for debugging */
     if (Response.Buffer) {
-        int EventCount = 0;
-        int CurrentEvent = 0;
-        std::string ResponseStr(Response.Buffer);
-        size_t SearchPos = 0;
+        ESP_LOGD(TAG, "CalDAV response (Status: %d, Length: %zu)", StatusCode, Response.Position);
+        ESP_LOGD(TAG, "Response content (first 1000 chars): %.*s", 1000, Response.Buffer);
+    } else {
+        ESP_LOGW(TAG, "CalDAV response buffer is NULL!");
+        return CALDAV_ERROR_HTTP;
+    }
 
-        /* Count events in the response */
-        while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos) {
-            EventCount++;
-            SearchPos += 12;
-        }
+    int EventCount = 0;
+    int CurrentEvent = 0;
+    std::string ResponseStr(Response.Buffer);
+    size_t SearchPos = 0;
 
-        ESP_LOGD(TAG, "Found: %d events", EventCount);
+    /* Count events in the response */
+    while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos) {
+        EventCount++;
+        SearchPos += 12;
+    }
 
-        if (EventCount == 0) {
-            *Length = 0;
-            *p_Events = NULL;
+    ESP_LOGD(TAG, "Found: %d events in response", EventCount);
+    
+    if (EventCount == 0) {
+        ESP_LOGD(TAG, "No events found in calendar");
+    }
 
-            CUSTOM_FREE(Response.Buffer);
+    if (EventCount == 0) {
+        *Length = 0;
+        *p_Events = NULL;
 
-            return CALDAV_ERROR_OK;
-        }
+        CUSTOM_FREE(Response.Buffer);
 
-        ESP_LOGD(TAG, "Allocating memory for %d events (%zu bytes)", EventCount, EventCount * sizeof(CalDAV_Calendar_Event_t));
+        return CALDAV_ERROR_OK;
+    }
 
-        /* Allocate memory for all events */
-        *p_Events = (CalDAV_Calendar_Event_t *)calloc(EventCount, sizeof(CalDAV_Calendar_Event_t));
-        if (*p_Events == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate memory for events!");
-            CUSTOM_FREE(Response.Buffer);
+    ESP_LOGD(TAG, "Allocating memory for %d events (%zu bytes)", EventCount, EventCount * sizeof(CalDAV_Calendar_Event_t));
 
-            return CALDAV_ERROR_NO_MEM;
-        }
+    /* Allocate memory for all events */
+    *p_Events = (CalDAV_Calendar_Event_t *)calloc(EventCount, sizeof(CalDAV_Calendar_Event_t));
+    if (*p_Events == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for events!");
+        CUSTOM_FREE(Response.Buffer);
 
-        ESP_LOGD(TAG, "Memory allocated successfully");
+        return CALDAV_ERROR_NO_MEM;
+    }
 
-        /* Parse each event */
-        SearchPos = 0;
+    ESP_LOGD(TAG, "Memory allocated successfully");
 
-        while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos && CurrentEvent < EventCount) {
+    /* Parse each event */
+    SearchPos = 0;
+
+    while ((SearchPos = ResponseStr.find("BEGIN:VEVENT", SearchPos)) != std::string::npos && CurrentEvent < EventCount) {
             size_t EventLen;
             size_t EventEnd;
             char *EventData;
@@ -688,14 +841,10 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
             CUSTOM_FREE(EventData);
 
             SearchPos = EventEnd + 10;
-        }
-
-        *Length = CurrentEvent;
-        CUSTOM_FREE(Response.Buffer);
-    } else {
-        *Length = 0;
-        *p_Events = NULL;
     }
+
+    *Length = CurrentEvent;
+    CUSTOM_FREE(Response.Buffer);
 
     return CALDAV_ERROR_OK;
 }
