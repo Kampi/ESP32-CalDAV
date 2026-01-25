@@ -40,6 +40,7 @@ typedef enum {
     CALDAV_ERROR_CONNECTION,        /**< Connection error. */
     CALDAV_ERROR_HTTP,              /**< HTTP protocol error. */
     CALDAV_ERROR_TIMEOUT,           /**< Operation timeout. */
+    CALDAV_ERROR_NOT_FOUND,         /**< Resource not found. */
 } CalDAV_Error_t;
 
 /** @brief CalDAV client configuration.
@@ -119,21 +120,32 @@ CalDAV_Error_t CalDAV_Test_Connection(CalDAV_Client_t *p_Client);
 CalDAV_Error_t CalDAV_Calendars_List(CalDAV_Client_t *p_Client,
                                      CalDAV_Calendar_List_t *p_Calendars);
 
+/** @brief              Finds a calendar by name or display name in the calendar list.
+ *  @param p_Calendars  Pointer to calendar list (must not be NULL)
+ *  @param p_Name       Calendar name to search for (searches both Name and DisplayName fields)
+ *  @param pp_Calendar  Pointer to store the found calendar pointer (NULL if not found)
+ *  @return             CALDAV_ERROR_OK if found, CALDAV_ERROR_NOT_FOUND if calendar doesn't exist,
+ *                      CALDAV_ERROR_INVALID_ARG if parameters are NULL
+ */
+CalDAV_Error_t CalDAV_Calendar_Find_By_Name(const CalDAV_Calendar_List_t *p_Calendars,
+                                            const char *p_Name,
+                                            CalDAV_Calendar_t **pp_Calendar);
+
 /** @brief                  Lists all events from the configured calendar.
  *  @param p_Client         CalDAV client handle (must not be NULL, calendar_path must be set in config)
  *  @param p_Events         Pointer to event array pointer (will be allocated, caller must free with CalDAV_Events_Free)
  *  @param p_Length         Pointer to store the number of events found
  *  @param p_CalendarPath   Path to the calendar resource (e.g. "/calendars/user/calendar-name/")
- *  @param p_StartTime      Time range filter start in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20200101T000000Z")
- *  @param p_EndTime        Time range filter end in iCalendar format (YYYYMMDDTHHMMSSZ, e.g. "20301231T235959Z")
+ *  @param p_StartTime      Pointer to time range filter start as UTC time
+ *  @param p_EndTime        Pointer to time range filter end as UTC time
  *  @return                 CALDAV_ERROR_OK on success, error code otherwise
  */
 CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            CalDAV_Calendar_Event_t **p_Events,
                                            size_t *p_Length,
                                            const char *p_CalendarPath,
-                                           const char *p_StartTime,
-                                           const char *p_EndTime);
+                                           const struct tm* p_StartTime,
+                                           const struct tm* p_EndTime);
 
 /** @brief          Frees memory allocated for event data.
  *  @param p_Events Event array to free
