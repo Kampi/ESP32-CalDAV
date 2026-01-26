@@ -1,4 +1,4 @@
-version: "0.0.1"
+version: "0.0.2"
 description: "ESP32 component for a CalDAV Client"
 url: https://github.com/Kampi/ESP32-CalDAV
 repository: https://github.com/Kampi/ESP32-CalDAV
