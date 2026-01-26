@@ -5,10 +5,10 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'docs/**'
-      - '.github/workflows/documentation.yaml'
   pull_request:
+    branches:
+      - main
+      - master
     paths:
       - 'docs/**'
       - '.github/workflows/documentation.yaml'
@@ -16,7 +16,7 @@ on:
 
 env:
   # Master branch (main or master)
-  master_branch: master
+  master_branch: main
 
 permissions:
   contents: write
@@ -32,6 +32,8 @@ jobs:
     steps:
     - name: Repository Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install AsciiDoctor
       run: |
@@ -69,7 +71,7 @@ jobs:
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>ESP32-CalDAV Component Documentation</title>
+          <title>ESP32-Lepton Component Documentation</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -153,15 +155,18 @@ jobs:
           </style>
         </head>
         <body>
-          <h1>� ESP32-CalDAV Component Documentation</h1>
+          <h1>🔥 ESP32-Lepton Component Documentation</h1>
           
           <div class="header-info">
-            <p><strong>CalDAV Client for ESP32</strong></p>
-            <p>Complete client implementation for CalDAV protocol on ESP32 platforms.</p>
+            <p><strong>FLIR Lepton Thermal Camera Driver for ESP32</strong></p>
+            <p>Complete driver implementation for FLIR Lepton 3.0 and 3.5 thermal imaging sensors on ESP32 platforms.</p>
             <p>
               <span class="badge">ESP-IDF</span>
-              <span class="badge">CalDAV</span>
-              <span class="badge">HTTPS</span>
+              <span class="badge">SPI</span>
+              <span class="badge">I2C</span>
+              <span class="badge">FreeRTOS</span>
+              <span class="badge">Radiometric</span>
+              <span class="badge">FLIR</span>
             </p>
           </div>
           
@@ -172,17 +177,8 @@ jobs:
         # Add documentation entries
         cat >> public/index.html << 'EOF'
             <div class="doc-item">
-              <h3>📚 Documentation Overview</h3>
-              <p>Main entry point with links to all documentation sections.</p>
-              <div class="doc-links">
-                <a href="README.html">📄 HTML</a>
-                <a href="pdf/README.pdf">📕 PDF</a>
-              </div>
-            </div>
-            
-            <div class="doc-item">
-              <h3>📋 API Reference & Guide</h3>
-              <p>Complete API reference, installation guide, configuration options, and troubleshooting.</p>
+              <h3>📋 Component Overview</h3>
+              <p>Introduction to the ESP32-Lepton component, architecture, and getting started guide.</p>
               <div class="doc-links">
                 <a href="overview.html">📄 HTML</a>
                 <a href="pdf/index.pdf">📕 PDF</a>
@@ -190,20 +186,47 @@ jobs:
             </div>
             
             <div class="doc-item">
-              <h3>💡 Code Examples</h3>
-              <p>Practical examples showing connection tests, calendar listing, event fetching, and full applications.</p>
+              <h3>🎯 Main Driver (lepton)</h3>
+              <p>Core driver API providing initialization, configuration, and high-level control functions.</p>
               <div class="doc-links">
-                <a href="examples.html">📄 HTML</a>
-                <a href="pdf/examples.pdf">📕 PDF</a>
+                <a href="lepton.html">📄 HTML</a>
+                <a href="pdf/lepton.pdf">📕 PDF</a>
               </div>
             </div>
             
             <div class="doc-item">
-              <h3>❓ FAQ & Troubleshooting</h3>
-              <p>Frequently asked questions, common issues, and solutions for configuration and debugging.</p>
+              <h3>📸 Frame Capture (lepton_capture)</h3>
+              <p>FreeRTOS task implementation for continuous frame acquisition with VSync support.</p>
               <div class="doc-links">
-                <a href="faq.html">📄 HTML</a>
-                <a href="pdf/faq.pdf">📕 PDF</a>
+                <a href="lepton_capture.html">📄 HTML</a>
+                <a href="pdf/lepton_capture.pdf">📕 PDF</a>
+              </div>
+            </div>
+            
+            <div class="doc-item">
+              <h3>⚙️ CCI Commands (lepton_cci)</h3>
+              <p>High-level command interface for sensor configuration and control via I2C.</p>
+              <div class="doc-links">
+                <a href="lepton_cci.html">📄 HTML</a>
+                <a href="pdf/lepton_cci.pdf">📕 PDF</a>
+              </div>
+            </div>
+            
+            <div class="doc-item">
+              <h3>🔌 CCI Low-Level (cci)</h3>
+              <p>Low-level I2C protocol implementation for Command and Control Interface.</p>
+              <div class="doc-links">
+                <a href="cci.html">📄 HTML</a>
+                <a href="pdf/cci.pdf">📕 PDF</a>
+              </div>
+            </div>
+            
+            <div class="doc-item">
+              <h3>🎥 VoSPI Interface (vospi)</h3>
+              <p>SPI-based video interface for high-speed thermal data acquisition with DMA.</p>
+              <div class="doc-links">
+                <a href="vospi.html">📄 HTML</a>
+                <a href="pdf/vospi.pdf">📕 PDF</a>
               </div>
             </div>
         EOF
@@ -213,7 +236,7 @@ jobs:
           </div>
           
           <div class="footer">
-            <p><strong>ESP32-CalDAV Component</strong> - CalDAV Client for ESP32</p>
+            <p><strong>ESP32-Lepton Component</strong> - FLIR Lepton Thermal Imaging Driver</p>
             <p>Copyright © Daniel Kampert, 2026 | GNU General Public License v3.0</p>
             <p>Website: <a href="https://www.kampis-elektroecke.de">www.kampis-elektroecke.de</a></p>
             <p>Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')</p>
@@ -225,15 +248,15 @@ jobs:
     - name: Upload Artifact - Documentation
       uses: actions/upload-artifact@v4
       with:
-        name: ESP32-CalDAV-Documentation
+        name: ESP32-Lepton-Documentation
         path: docs/public
 
   deploy:
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || contains(github.ref, 'refs/tags/'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     needs:
       - asciidoctor
     runs-on: ubuntu-latest
-    name: Deploy to Releases
+    name: Deploy to GitHub Pages
 
     steps:
     - name: Repository Checkout
@@ -242,40 +265,12 @@ jobs:
     - name: Download Artifacts
       uses: actions/download-artifact@v4
 
-    - name: Organize and create tarball
+    - name: Organize documentation
       run: |
-        mv ESP32-CalDAV-Documentation public
-
-        # Create renamed copies for GitHub Releases (with -nightly suffix)
-        mkdir -p release_pdfs
-        cd public/pdf
-        for pdf_file in *.pdf; do
-          if [ -f "$pdf_file" ]; then
-            base_name="${pdf_file%.pdf}"
-            cp "$pdf_file" "../../release_pdfs/${base_name}-nightly.pdf"
-          fi
-        done
-        cd ../..
-        
-        # Create tarball
-        tar zvcf ESP32-CalDAV-Docs-nightly.tar.gz -C public .
-
-    - name: Deploy to GitHub Releases
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release view nightly 2>/dev/null || \
-          gh release create nightly \
-            --title "Nightly Documentation Build" \
-            --notes "Automatically generated documentation for ESP32-CalDAV component" \
-            --prerelease
-
-        gh release upload nightly \
-          ESP32-CalDAV-Docs-nightly.tar.gz \
-          release_pdfs/*.pdf --clobber
+        mv ESP32-Lepton-Documentation public
 
     - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./public
