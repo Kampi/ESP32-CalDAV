@@ -56,9 +56,6 @@ typedef struct {
  */
 typedef struct {
     std::string ServerURL;          /**< CalDAV server URL. */
-    std::string Username;           /**< Username for authentication. */
-    std::string Password;           /**< Password for authentication. */
-    uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
     bool IsInitialized;             /**< Indicates if the client is initialized. */
 } CalDAV_Client_t;
 
@@ -144,8 +141,8 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                                            CalDAV_Calendar_Event_t **p_Events,
                                            size_t *p_Length,
                                            const char *p_CalendarPath,
-                                           const struct tm* p_StartTime,
-                                           const struct tm* p_EndTime);
+                                           const struct tm *p_StartTime,
+                                           const struct tm *p_EndTime);
 
 /** @brief          Frees memory allocated for event data.
  *  @param p_Events Event array to free

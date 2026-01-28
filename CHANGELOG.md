@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+**Fixed:**
+
+Code simplifications
+CI/CD fixes
+
 ## [0.0.2] - 2026-01-26
 
 **Changed:**
