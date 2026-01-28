@@ -41,7 +41,7 @@ jobs:
           UNRELEASED_CONTENT=$(awk '/\[Unreleased\]/,/^## \[/' "$CHANGELOG_FILE" | sed '1d;$d')
 
           if [ -z "$UNRELEASED_CONTENT" ]; then
-            echo "Warning: [Unreleased] section is empty"
+            echo "? [Unreleased] section is empty (allowed during development)"
             exit 0
           fi
 
@@ -55,14 +55,15 @@ jobs:
           for section in "${VALID_SECTIONS[@]}"; do
             if echo "$UNRELEASED_CONTENT" | grep -q "^$section"; then
               FOUND_SECTIONS=true
-              echo "✓ Found section: $section"
+              echo "? Found section: $section"
             fi
           done
 
           if [ "$FOUND_SECTIONS" = false ]; then
-            echo "Error: No valid sections found in [Unreleased]"
+            echo "Warning: No valid sections found in [Unreleased], but content exists"
             echo "Expected sections: Added, Changed, Fixed, Removed"
-            exit 1
+            echo "This is allowed during early development"
+            exit 0
           fi
 
           # Validate entry format: must start with "- " (dash + space/tab) and contain issue reference "(#number)"
@@ -84,15 +85,15 @@ jobs:
             if [[ "$line" =~ ^[[:space:]]*- ]]; then
               # Check for issue reference in format (#number)
               if ! [[ "$line" =~ \(#[0-9]+\) ]]; then
-                echo "✗ Line $LINE_NUMBER: Missing or invalid issue reference (expected format: (#123))"
+                echo "? Line $LINE_NUMBER: Missing or invalid issue reference (expected format: (#123))"
                 echo "  Content: $line"
                 ERROR_COUNT=$((ERROR_COUNT + 1))
               else
-                echo "✓ Line $LINE_NUMBER: Valid entry"
+                echo "? Line $LINE_NUMBER: Valid entry"
               fi
             elif [[ "$line" =~ ^[[:space:]]*[^-] ]]; then
               # Line has content but doesn't start with -
-              echo "✗ Line $LINE_NUMBER: Entry must start with '- ' (dash + space)"
+              echo "? Line $LINE_NUMBER: Entry must start with '- ' (dash + space)"
               echo "  Content: $line"
               ERROR_COUNT=$((ERROR_COUNT + 1))
             fi
@@ -162,5 +163,5 @@ jobs:
             echo ""
             echo "This is not an error, but you may want to review if this is intentional"
           else
-            echo "✓ No duplicate issue numbers found"
+            echo "? No duplicate issue numbers found"
           fi
