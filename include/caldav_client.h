@@ -56,9 +56,6 @@ typedef struct {
  */
 typedef struct {
     std::string ServerURL;          /**< CalDAV server URL. */
-    std::string Username;           /**< Username for authentication. */
-    std::string Password;           /**< Password for authentication. */
-    uint32_t TimeoutMs;             /**< Timeout in milliseconds. */
     bool IsInitialized;             /**< Indicates if the client is initialized. */
 } CalDAV_Client_t;
 
