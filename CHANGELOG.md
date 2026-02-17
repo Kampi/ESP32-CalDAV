@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-02-17
+
 **Fixed:**
 
 - Code simplifications
@@ -17,5 +19,6 @@
 
 Initial release
 
-[Unreleased]: https://github.com/Kampi/ESP32-CalDAV/compare/0.0.2...HEAD
+[Unreleased]: https://github.com/Kampi/ESP32-CalDAV/compare/0.0.3...HEAD
 [0.0.2]: https://github.com/Kampi/ESP32-CalDAV/releases/tag/0.0.2
+[0.0.3]: https://github.com/Kampi/ESP32-CalDAV/compare/0.0.2...0.0.3
