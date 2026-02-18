@@ -73,6 +73,42 @@ static inline char *_CalDAV_String_to_cstr(const std::string &str)
     return str.empty() ? NULL : strdup(str.c_str());
 }
 
+/** @brief      Convert ISO-8859-1/Windows-1252 string to UTF-8.
+ *  @param p_Src    Source string in ISO-8859-1/Windows-1252 encoding
+ *  @return     Allocated UTF-8 string or NULL on error
+ */
+static char *_CalDAV_ISO8859_to_UTF8(const char *p_Src)
+{
+    if (p_Src == NULL) {
+        return NULL;
+    }
+    
+    size_t SrcLen = strlen(p_Src);
+    /* Worst case: every byte could become 2 bytes in UTF-8 */
+    char *p_Dest = static_cast<char *>(CUSTOM_MALLOC((SrcLen * 2) + 1));
+    if (p_Dest == NULL) {
+        return NULL;
+    }
+    
+    size_t DestIdx = 0;
+    for (size_t i = 0; i < SrcLen; i++) {
+        unsigned char c = static_cast<unsigned char>(p_Src[i]);
+        
+        if (c < 0x80) {
+            /* ASCII character - no conversion needed */
+            p_Dest[DestIdx++] = c;
+        } else {
+            /* ISO-8859-1 extended character - convert to UTF-8 */
+            /* UTF-8 encoding for U+0080 to U+00FF: 110xxxxx 10xxxxxx */
+            p_Dest[DestIdx++] = 0xC0 | (c >> 6);        /* 110x xxxx */
+            p_Dest[DestIdx++] = 0x80 | (c & 0x3F);      /* 10xx xxxx */
+        }
+    }
+    
+    p_Dest[DestIdx] = '\0';
+    return p_Dest;
+}
+
 /** @brief  Buffer used to accumulate HTTP response data.
  *          This structure holds a dynamically allocated character buffer, its current
  *          total size, and the write position used while assembling the complete
@@ -564,21 +600,35 @@ CalDAV_Error_t CalDAV_Calendar_Find_By_Name(const CalDAV_Calendar_List_t *p_Cale
     }
 
     *pp_Calendar = NULL;
+    
+    /* Convert search string from ISO-8859-1 to UTF-8 if needed */
+    char *p_SearchNameUTF8 = _CalDAV_ISO8859_to_UTF8(p_Name);
+    if (p_SearchNameUTF8 == NULL) {
+        ESP_LOGE(TAG, "Failed to convert search string to UTF-8!");
+
+        return CALDAV_ERROR_INVALID_ARG;
+    }
+    
+    ESP_LOGD(TAG, "Searching for calendar: '%s' (UTF-8: '%s')", p_Name, p_SearchNameUTF8);
 
     /* Search through all calendars */
     for (size_t i = 0; i < p_Calendars->Length; i++) {
         bool Found = false;
 
-        /* Check Name field */
+        /* Check Name field - try both original and UTF-8 converted name */
         if (p_Calendars->Calendar[i].Name != NULL) {
-            if (strcmp(p_Calendars->Calendar[i].Name, p_Name) == 0) {
+            ESP_LOGD(TAG, "  Comparing with Name: '%s'", p_Calendars->Calendar[i].Name);
+            if ((strcmp(p_Calendars->Calendar[i].Name, p_Name) == 0) ||
+                (strcmp(p_Calendars->Calendar[i].Name, p_SearchNameUTF8) == 0)) {
                 Found = true;
             }
         }
 
-        /* Check DisplayName field if not found yet */
+        /* Check DisplayName field if not found yet - try both original and UTF-8 converted name */
         if ((Found == false) && (p_Calendars->Calendar[i].DisplayName != NULL)) {
-            if (strcmp(p_Calendars->Calendar[i].DisplayName, p_Name) == 0) {
+            ESP_LOGD(TAG, "  Comparing with DisplayName: '%s'", p_Calendars->Calendar[i].DisplayName);
+            if ((strcmp(p_Calendars->Calendar[i].DisplayName, p_Name) == 0) ||
+                (strcmp(p_Calendars->Calendar[i].DisplayName, p_SearchNameUTF8) == 0)) {
                 Found = true;
             }
         }
@@ -589,9 +639,13 @@ CalDAV_Error_t CalDAV_Calendar_Find_By_Name(const CalDAV_Calendar_List_t *p_Cale
                      p_Name,
                      p_Calendars->Calendar[i].Path ? p_Calendars->Calendar[i].Path : "Unknown");
 
+            CUSTOM_FREE(p_SearchNameUTF8);
+
             return CALDAV_ERROR_OK;
         }
     }
+    
+    CUSTOM_FREE(p_SearchNameUTF8);
 
     ESP_LOGW(TAG, "Calendar '%s' not found in list of %zu calendars", p_Name, p_Calendars->Length);
 
@@ -615,6 +669,7 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
 
     if ((p_Client == NULL) || (p_Client->IsInitialized == false) || (p_Events == NULL) || (Length == NULL) ||
         (p_CalendarPath == NULL)) {
+
         return CALDAV_ERROR_INVALID_ARG;
     }
 
@@ -748,7 +803,7 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
     ESP_LOGD(TAG, "Allocating memory for %d events (%zu bytes)", EventCount, EventCount * sizeof(CalDAV_Calendar_Event_t));
 
     /* Allocate memory for all events */
-    *p_Events = (CalDAV_Calendar_Event_t *)CUSTOM_CALLOC(EventCount, sizeof(CalDAV_Calendar_Event_t));
+    *p_Events = static_cast<CalDAV_Calendar_Event_t *>(CUSTOM_CALLOC(EventCount, sizeof(CalDAV_Calendar_Event_t)));
     if (*p_Events == NULL) {
         ESP_LOGE(TAG, "Failed to allocate memory for events!");
         CUSTOM_FREE(Response.Buffer);
@@ -773,7 +828,7 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
 
         /* Extract event data */
         EventLen = EventEnd - SearchPos + 10;
-        EventData = (char *)CUSTOM_MALLOC(EventLen + 1);
+        EventData = static_cast<char *>(CUSTOM_MALLOC(EventLen + 1));
 
         if (EventData == NULL) {
             /* Allocation failure for event data: clean up and return */
