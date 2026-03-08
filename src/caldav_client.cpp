@@ -109,6 +109,49 @@ static char *_CalDAV_ISO8859_to_UTF8(const char *p_Src)
     return p_Dest;
 }
 
+/** @brief      Unescape iCalendar text property value (RFC 5545 section 3.3.11).
+ *              Converts literal \\n / \\N to newline, \\, to comma,
+ *              \\; to semicolon and \\\\ to backslash.
+ *  @param Input    Raw extracted iCal property value
+ *  @return         Unescaped string
+ */
+static std::string _CalDAV_Unescape_iCal_Text(const std::string &Input)
+{
+    std::string Result;
+    Result.reserve(Input.size());
+
+    for (size_t i = 0; i < Input.size(); i++) {
+        if ((Input[i] == '\\') && ((i + 1) < Input.size())) {
+            switch (Input[i + 1]) {
+                case 'n':
+                case 'N':
+                    Result += '\n';
+                    i++;
+                    break;
+                case ',':
+                    Result += ',';
+                    i++;
+                    break;
+                case ';':
+                    Result += ';';
+                    i++;
+                    break;
+                case '\\':
+                    Result += '\\';
+                    i++;
+                    break;
+                default:
+                    Result += Input[i];
+                    break;
+            }
+        } else {
+            Result += Input[i];
+        }
+    }
+
+    return Result;
+}
+
 /** @brief  Buffer used to accumulate HTTP response data.
  *          This structure holds a dynamically allocated character buffer, its current
  *          total size, and the write position used while assembling the complete
@@ -707,18 +750,28 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
 
     ESP_LOGD(TAG, "Fetching events from %s between %s to %s", URL, StartTimeString, EndTimeString);
 
-    /* Build CalDAV calendar-query with time-range filter */
+    /* Build CalDAV calendar-query with time-range filter.
+     * The <C:expand> element inside <C:calendar-data> instructs the server to
+     * return recurring events as individual occurrences with their actual
+     * DTSTART/DTEND, instead of the base event with the original creation date.
+     */
     std::string RequestBody =
         "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n"
         "<C:calendar-query xmlns:D=\"DAV:\" xmlns:C=\"urn:ietf:params:xml:ns:caldav\">\n"
         "  <D:prop>\n"
         "    <D:getetag/>\n"
-        "    <C:calendar-data/>\n"
-        "  </D:prop>\n"
-        "  <C:filter>\n"
-        "    <C:comp-filter name=\"VCALENDAR\">\n"
-        "      <C:comp-filter name=\"VEVENT\">\n"
-        "        <C:time-range start=\"";
+        "    <C:calendar-data>\n"
+        "      <C:expand start=\"";
+    RequestBody += StartTimeString;
+    RequestBody += "\" end=\"";
+    RequestBody += EndTimeString;
+    RequestBody += "\"/>\n"
+                   "    </C:calendar-data>\n"
+                   "  </D:prop>\n"
+                   "  <C:filter>\n"
+                   "    <C:comp-filter name=\"VCALENDAR\">\n"
+                   "      <C:comp-filter name=\"VEVENT\">\n"
+                   "        <C:time-range start=\"";
     RequestBody += StartTimeString;
     RequestBody += "\" end=\"";
     RequestBody += EndTimeString;
@@ -854,9 +907,9 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
         EventData[EventLen] = '\0';
 
         /* Parse iCal fields */
-        (*p_Events)[CurrentEvent].Summary = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "SUMMARY:"));
-        (*p_Events)[CurrentEvent].Description = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DESCRIPTION:"));
-        (*p_Events)[CurrentEvent].Location = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "LOCATION:"));
+        (*p_Events)[CurrentEvent].Summary = _CalDAV_String_to_cstr(_CalDAV_Unescape_iCal_Text(_CalDAV_Extract_iCal_Field(EventData, "SUMMARY:")));
+        (*p_Events)[CurrentEvent].Description = _CalDAV_String_to_cstr(_CalDAV_Unescape_iCal_Text(_CalDAV_Extract_iCal_Field(EventData, "DESCRIPTION:")));
+        (*p_Events)[CurrentEvent].Location = _CalDAV_String_to_cstr(_CalDAV_Unescape_iCal_Text(_CalDAV_Extract_iCal_Field(EventData, "LOCATION:")));
         (*p_Events)[CurrentEvent].UID = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "UID:"));
         (*p_Events)[CurrentEvent].StartTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTSTART"));
         (*p_Events)[CurrentEvent].EndTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTEND"));
