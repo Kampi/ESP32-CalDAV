@@ -24,7 +24,6 @@ permissions:
   id-token: write
 
 jobs:
-
   asciidoctor:
     runs-on: ubuntu-latest
     name: Build Documentation (AsciiDoc)

@@ -10,7 +10,16 @@ permissions:
   contents: write
 
 jobs:
+  validate-changelog:
+    name: Validate Changelog
+    uses: ./.github/workflows/changelog-check.yaml
+
+  astyle-check:
+    name: Code Style Check
+    uses: ./.github/workflows/astyle.yaml
+
   release:
+    needs: [validate-changelog, astyle-check]
     name: Component Release
     runs-on: ubuntu-latest
     steps:
