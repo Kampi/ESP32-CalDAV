@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+**Added:**
+
+- Add event duration fields
+
 ## [0.0.4] - 2026-03-28
+
+**Added:**
+
+- Add support for ISO-8859-1
 
 ## [0.0.3] - 2026-02-17
 

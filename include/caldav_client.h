@@ -83,7 +83,8 @@ typedef struct {
     char *Summary;                  /**< Event title/summary. */
     char *Description;              /**< Event description (optional). */
     char *StartTime;                /**< Start time in ISO 8601 format. */
-    char *EndTime;                  /**< End time in ISO 8601 format. */
+    char *EndTime;                  /**< End time in ISO 8601 format (NULL when DURATION is used instead). */
+    char *Duration;                 /**< Event duration in ISO 8601 format (e.g. "PT1H30M"), NULL when DTEND is used. */
     char *Location;                 /**< Event location (optional). */
 } CalDAV_Calendar_Event_t;
 

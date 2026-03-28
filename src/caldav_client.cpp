@@ -892,6 +892,7 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
                 CUSTOM_FREE((*p_Events)[i].UID);
                 CUSTOM_FREE((*p_Events)[i].StartTime);
                 CUSTOM_FREE((*p_Events)[i].EndTime);
+                CUSTOM_FREE((*p_Events)[i].Duration);
             }
 
             *p_Events = NULL;
@@ -913,6 +914,7 @@ CalDAV_Error_t CalDAV_Calendar_Events_List(CalDAV_Client_t *p_Client,
         (*p_Events)[CurrentEvent].UID = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "UID:"));
         (*p_Events)[CurrentEvent].StartTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTSTART"));
         (*p_Events)[CurrentEvent].EndTime = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DTEND"));
+        (*p_Events)[CurrentEvent].Duration = _CalDAV_String_to_cstr(_CalDAV_Extract_iCal_Field(EventData, "DURATION:"));
 
         CurrentEvent++;
         CUSTOM_FREE(EventData);
@@ -982,6 +984,10 @@ void CalDAV_Events_Free(CalDAV_Calendar_Event_t *p_Events, size_t Length)
 
         if (p_Events[i].EndTime) {
             CUSTOM_FREE(p_Events[i].EndTime);
+        }
+
+        if (p_Events[i].Duration) {
+            CUSTOM_FREE(p_Events[i].Duration);
         }
 
         if (p_Events[i].Location) {
